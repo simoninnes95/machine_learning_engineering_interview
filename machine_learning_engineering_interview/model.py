@@ -40,13 +40,16 @@ app = FastAPI()
 model_instance = ImageModel()
 
 @app.get("/predict")
-async def predict(request: Request):
-    data = await request.json()
-    encoded_mage_url = data["image_url"]
-    # we need to decode the image URL before passing it to the model
-    image_url = urllib.parse.unquote(encoded_mage_url)
-    return model_instance.predict(image_url)
-    
+async def predict(image_url: str) -> Dict:
+    # we decode the image URL before passing it to the model
+    decoded_image_url = urllib.parse.unquote(image_url)
+    print("Decoded image URL: {}".format(decoded_image_url))
+
+    # we call the model instance to get the prediction
+    prediction = model_instance.predict(decoded_image_url)
+    return prediction
+
+
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=8001)

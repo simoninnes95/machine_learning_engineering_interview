@@ -60,11 +60,7 @@ portForward:
     resourceName: model-service
     port: 80
     localPort: 8000 # maps to the same port as docker-compose
-verify:
-- name: loadtest-verify
-  container:
-    name: loadtest-job
-    image: loadtest
-    command: ["locust", "-f", "loadtest.py"]
-  executionMode:
-    kubernetesCluster: {}
+  - resourceType: service
+    resourceName: loadtest-service
+    port: 80
+    localPort: 8089 # maps to the same port as docker-compose

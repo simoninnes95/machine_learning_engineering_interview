@@ -1,43 +1,43 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: model-service
+  name: loadtest-service
   namespace:  {{ .Release.Namespace }}
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: model-service
+      app: loadtest-service
   template:
     metadata:
       labels:
-        app: model-service
+        app: loadtest-service
     spec:
       containers:
-        - name: model-service
-          image: {{ .Values.image_model.repository }}:{{ .Values.image_model.tag | default "latest" }}
+        - name: loadtest-service
+          image: {{ .Values.image_loadtest.repository }}:{{ .Values.image_loadtest.tag | default "latest" }}
           ports:
             - containerPort: 80
-          command: ["/app/.venv/bin/fastapi", "run", "model.py", "--port", "8000", "--host", "0.0.0.0"]
+          command: ["locust", "-f", "loadtest.py", "--host", "http://model-service.{{ .Release.Namespace }}.svc.cluster.local:8000"]
+          env:
+            - name: API_URL
+              value: http://api-service.{{ .Release.Namespace }}.svc.cluster.local:8000
           resources:
             requests:
               memory: "2Gi"
-              nvidia.com/gpu: 1
               cpu: 2
             limits:
               memory: "3Gi"
               cpu: 3
-              nvidia.com/gpu: 1
-
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: model-service
+  name: loadtest-service
   namespace: {{ .Release.Namespace }}
 spec:
   selector:
-    app: model-service
+    app: loadtest-service
   ports:
     - protocol: TCP
       port: 80
