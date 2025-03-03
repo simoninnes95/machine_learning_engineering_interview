@@ -7,7 +7,7 @@ build:
   local:
     push: false
     useDockerCLI: true
-    tryImportMissing: true
+    # tryImportMissing: true
     useBuildkit: true
     concurrency: 0
   tagPolicy:

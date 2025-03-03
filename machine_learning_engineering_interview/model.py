@@ -45,7 +45,6 @@ async def predict(image_url: str) -> Dict:
     prediction = model_instance.predict(image_url)
     return prediction
 
-
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8001)
