@@ -1,0 +1,13 @@
+[project]
+name = "machine-learning-engineering-interview"
+version = "0.1.0"
+description = "Machine Learning Engineering-style Interview Problem."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi[standard]>=0.115.11",
+    "pillow>=11.1.0",
+    "ray[serve]>=2.43.0",
+    "torch>=2.6.0",
+    "torchvision>=0.21.0",
+]

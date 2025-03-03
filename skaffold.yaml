@@ -1,0 +1,70 @@
+apiVersion: skaffold/v4beta12
+kind: Config
+metadata:
+  name: machine_learning_engineering_interview
+build:
+  platforms: ["linux/amd64"]
+  local:
+    push: false
+    useDockerCLI: true
+    # tryImportMissing: true
+    concurrency: 0
+  tagPolicy:
+    customTemplate:
+      template: "{{.FOO}}_{{.BAR}}"
+      components:
+      - name: FOO
+        dateTime:
+          format: "2006-01-02_15-04-05.999_MST"
+          timezone: "UTC"
+      - name: BAR
+        gitCommit:
+          variant: AbbrevCommitSha
+  artifacts:
+    - image: api
+      context: .
+      docker:
+        dockerfile: dockerfiles/Dockerfile.api
+      sync:
+        infer:
+          - 'machine_learning_engineering_interview/api.py'
+    - image: serve
+      context: .
+      docker:
+        dockerfile: dockerfiles/Dockerfile.serve
+      sync:
+        infer:
+          - 'machine_learning_engineering_interview/serve.py'
+    - image: loadtest
+      context: .
+      docker:
+        dockerfile: dockerfiles/Dockerfile.loadtest
+      sync:
+        infer:
+          - 'machine_learning_engineering_interview/loadtest.py'
+manifests:
+  helm:
+    releases:
+      - name: machine-learning-engineering-interview
+        createNamespace: true
+        chartPath: helm
+        valuesFiles:
+          - helm/values.yaml
+        setValueTemplates:
+          image_api.repository: "{{.IMAGE_REPO_api}}"
+          image_api.tag: "{{.IMAGE_TAG_api}}"
+          image_serve.repository: "{{.IMAGE_REPO_serve}}"
+          image_serve.tag: "{{.IMAGE_TAG_serve}}"
+        version: 0.1.0
+deploy:
+  kubeContext: minikube # see https://skaffold.dev/docs/environment/kube-context/
+  kubectl: {}
+portForward:
+  - resourceType: service
+    resourceName: api-service
+    port: 80
+    localPort: 8080 # maps to the same port as docker-compose
+  - resourceType: service
+    resourceName: image-classifier-raycluster-vl6tb-head-svc
+    port: 8000
+    localPort: 8000 # maps to the same port as docker-compose

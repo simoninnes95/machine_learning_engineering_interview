@@ -1,0 +1,34 @@
+fail_fast: true
+repos:
+  # Python
+  - repo: https://github.com/pycqa/isort
+    rev: 5.13.2
+    hooks:
+      - id: isort
+  - repo: https://github.com/astral-sh/uv-pre-commit
+    rev: 0.6.3
+    hooks:
+      - id: uv-lock
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.9.9
+    hooks:
+      - id: ruff
+        args: [ --fix ]
+      - id: ruff-format
+    # Yaml
+  - repo: https://github.com/google/yamlfmt
+    rev: v0.16.0
+    hooks:
+      - id: yamlfmt
+  # Docker
+  - repo: https://github.com/hadolint/hadolint
+    rev: "v2.13.1-beta"
+    hooks:
+      - id: hadolint-docker
+        args: [--ignore, DL3042, --ignore, DL3006, --failure-threshold, warning]
+  # Helm
+  - repo: https://github.com/gruntwork-io/pre-commit
+    rev: v0.1.26
+    hooks:
+      - id: helmlint
+        files: ^helm/

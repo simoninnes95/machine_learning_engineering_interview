@@ -1,0 +1,6 @@
+image_api:
+  repository: api
+  tag: latest
+image_serve:
+  repository: serve
+  tag: latest

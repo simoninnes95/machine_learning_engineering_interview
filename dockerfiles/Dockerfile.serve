@@ -1,0 +1,10 @@
+FROM rayproject/ray:2.41.0
+
+# Change the working directory to the `app` directory
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+
+# Change the working directory to the `app` directory
+WORKDIR /app
+
+# COPY the project into the image
+COPY machine_learning_engineering_interview/serve.py /app/serve.py

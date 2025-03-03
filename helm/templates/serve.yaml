@@ -1,0 +1,90 @@
+apiVersion: ray.io/v1
+kind: RayService
+metadata:
+  name: image-classifier
+  namespace:  {{ .Release.Namespace }}
+spec:
+  serviceUnhealthySecondThreshold: 300
+  deploymentUnhealthySecondThreshold: 300
+  serveConfigV2: |
+    applications:
+      - name: image_classifier
+        import_path: serve:app
+        runtime_env:
+          working_dir: /app
+          pip:
+            - torch
+            - torchvision
+            - pillow
+            - requests
+        deployments:
+          - name: ImageModel
+            num_replicas: 1
+            ray_actor_options:
+              num_cpus: 2
+              num_gpus: 1
+              memory: 2Gi
+  rayClusterConfig:
+    rayVersion: '2.41.0' # Should match the Ray version in the image of the containers
+    ######################headGroupSpecs#################################
+    # Ray head pod template.
+    headGroupSpec:
+      # The `rayStartParams` are used to configure the `ray start` command.
+      # See https://github.com/ray-project/kuberay/blob/master/docs/guidance/rayStartParams.md for the default settings of `rayStartParams` in KubeRay.
+      # See https://docs.ray.io/en/latest/cluster/cli.html#ray-start for all available options in `rayStartParams`.
+      rayStartParams:
+        dashboard-host: '0.0.0.0'
+      # Pod template
+      template:
+        spec:
+          containers:
+          - name: ray-head
+            image: {{ .Values.image_serve.repository }}:{{ .Values.image_serve.tag | default "latest" }}
+            ports:
+            - containerPort: 6379
+              name: gcs
+            - containerPort: 8265
+              name: dashboard
+            - containerPort: 10001
+              name: client
+            - containerPort: 8000
+              name: serve
+            volumeMounts:
+              - mountPath: /tmp/ray
+                name: ray-logs
+            resources:
+              limits:
+                cpu: "1"
+                memory: "1G"
+              requests:
+                cpu: "1"
+                memory: "1G"
+          volumes:
+            - name: ray-logs
+              emptyDir: {}
+    workerGroupSpecs:
+    # The pod replicas in this group typed worker
+    - replicas: 1
+      minReplicas: 1
+      maxReplicas: 1
+      groupName: gpu-group
+      rayStartParams: {}
+      # Pod template
+      template:
+        spec:
+          containers:
+          - name: ray-worker
+            image: {{ .Values.image_serve.repository }}:{{ .Values.image_serve.tag | default "latest" }}
+            lifecycle:
+              preStop:
+                exec:
+                  command: ["/bin/sh","-c","ray stop"]
+            resources:
+              limits:
+                cpu: 4
+                memory: "8G"
+                nvidia.com/gpu: 1
+              requests:
+                cpu: 4
+                memory: "8G"
+                nvidia.com/gpu: 1

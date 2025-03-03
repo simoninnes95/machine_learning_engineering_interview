@@ -1,0 +1,9 @@
+FROM locustio/locust:2.33.0
+
+# Change the working directory to the `app` directory
+WORKDIR /app
+
+# COPY the project into the image
+COPY machine_learning_engineering_interview/loadtest.py /app/loadtest.py
+
+CMD ["locust", "-f", "loadtest.py"]
