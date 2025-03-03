@@ -1,6 +1,6 @@
 image_api:
   repository: api
   tag: latest
-image_serve:
-  repository: serve
+image_model:
+  repository: model
   tag: latest

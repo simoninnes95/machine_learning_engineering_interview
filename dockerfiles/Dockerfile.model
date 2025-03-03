@@ -1,5 +1,4 @@
-# Install uv
-FROM python:3.11-slim
+FROM pytorch/pytorch:2.6.0-cuda12.6-cudnn9-runtime
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
 # Change the working directory to the `app` directory
@@ -17,4 +16,7 @@ ADD machine_learning_engineering_interview pyproject.toml uv.lock /app/
 # Sync the project
 RUN --mount=type=cache,target=/root/.cache/uv uv sync --frozen
 
-CMD ["/app/.venv/bin/fastapi", "run", "api.py", "--port", "80", "--host", "0.0.0.0"]
+CMD ["/app/.venv/bin/fastapi", "run", "model.py", "--port", "80", "--host", "0.0.0.0"]
+
+
+
