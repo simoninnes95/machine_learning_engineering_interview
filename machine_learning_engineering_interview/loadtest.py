@@ -12,9 +12,8 @@ class QuickstartUser(HttpUser):
     def download_image(self):
         # we generate a random image URL to simulate different images
         image_url = f"{API_URL}/{random.randint(1, 1000)}.jpg"
-        encoded_image_url = urllib.parse.quote(image_url, safe="")
         params = {
-            'image_url': encoded_image_url
+            'image_url': image_url
         }
         self.client.get("/predict", params=params)
 

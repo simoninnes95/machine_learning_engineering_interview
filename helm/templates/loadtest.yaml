@@ -18,10 +18,10 @@ spec:
           image: {{ .Values.image_loadtest.repository }}:{{ .Values.image_loadtest.tag | default "latest" }}
           ports:
             - containerPort: 80
-          command: ["locust", "-f", "loadtest.py", "--host", "http://model-service.{{ .Release.Namespace }}.svc.cluster.local:8000"]
+          command: ["locust", "-f", "loadtest.py", "--host", "http://model-service.{{ .Release.Namespace }}.svc.cluster.local:80", "--web-port", "8089"]
           env:
             - name: API_URL
-              value: http://api-service.{{ .Release.Namespace }}.svc.cluster.local:8000
+              value: http://api-service.{{ .Release.Namespace }}.svc.cluster.local:80
           resources:
             requests:
               memory: "2Gi"
@@ -41,5 +41,5 @@ spec:
   ports:
     - protocol: TCP
       port: 80
-      targetPort: 8000
+      targetPort: 8089
   type: ClusterIP

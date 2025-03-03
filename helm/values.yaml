@@ -4,3 +4,6 @@ image_api:
 image_model:
   repository: model
   tag: latest
+image_loadtest:
+  repository: loadtest
+  tag: latest

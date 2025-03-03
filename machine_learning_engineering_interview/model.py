@@ -41,12 +41,8 @@ model_instance = ImageModel()
 
 @app.get("/predict")
 async def predict(image_url: str) -> Dict:
-    # we decode the image URL before passing it to the model
-    decoded_image_url = urllib.parse.unquote(image_url)
-    print("Decoded image URL: {}".format(decoded_image_url))
-
     # we call the model instance to get the prediction
-    prediction = model_instance.predict(decoded_image_url)
+    prediction = model_instance.predict(image_url)
     return prediction
 
 
