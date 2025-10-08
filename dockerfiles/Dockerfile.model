@@ -49,11 +49,11 @@ WORKDIR /app
 # Copy your package INTO /app (so imports are stable)
 COPY machine_learning_engineering_interview /app/machine_learning_engineering_interview
 
-COPY model/requirements.txt /app/requirements.txt
-RUN pip install --upgrade pip && pip install -r /app/requirements.txt
+COPY pyproject.toml requirements.txt* /app/
+RUN pip install --upgrade pip && \
+    if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
-# Ensure uvicorn & fastapi exist (if not already in your deps)
-RUN pip install --upgrade pip && pip install "uvicorn[standard]" fastapi
+RUN pip install --upgrade pip && pip install fastapi "uvicorn[standard]"
 
 # Make /app importable
 ENV PYTHONPATH=/app
