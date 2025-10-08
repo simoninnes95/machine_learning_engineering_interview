@@ -40,5 +40,5 @@ ENV PYTHONPATH=/app
 
 # Start FastAPI with Uvicorn — ADJUST module:object below
 # If your app object is `api` inside model.py in /app, use model:api
-CMD ["uvicorn", "model:api", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "app.api:api", "--host", "0.0.0.0", "--port", "8000"]
 
