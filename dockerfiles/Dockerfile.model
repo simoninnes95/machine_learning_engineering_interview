@@ -19,26 +19,45 @@
 # CMD ["/app/.venv/bin/fastapi", "run", "model.py", "--port", "80", "--host", "0.0.0.0"]
 
 
-# ARM64 + CUDA + PyTorch (multi-arch) — good for GH200
+# # ARM64 + CUDA + PyTorch (multi-arch) — good for GH200
+# FROM nvcr.io/nvidia/pytorch:24.08-py3
+
+# # Put your code under /app
+# WORKDIR /app
+
+# # Install deps first for layer caching
+# COPY pyproject.toml requirements.txt* /app/
+# RUN pip install --upgrade pip && \
+#     if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+
+# RUN pip install --upgrade pip && pip install fastapi "uvicorn[standard]"
+
+# # Now copy the rest of the source
+# COPY . /app
+
+# # Ensure /app is on sys.path
+# ENV PYTHONPATH=/app
+
+# # Start FastAPI with Uvicorn — ADJUST module:object below
+# # If your app object is `api` inside model.py in /app, use model:api
+# CMD ["uvicorn", "machine_learning_engineering_interview.app:model", "--host", "0.0.0.0", "--port", "8000"]
+
 FROM nvcr.io/nvidia/pytorch:24.08-py3
 
-# Put your code under /app
 WORKDIR /app
 
-# Install deps first for layer caching
-COPY pyproject.toml requirements.txt* /app/
-RUN pip install --upgrade pip && \
-    if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+# Copy your package INTO /app (so imports are stable)
+COPY machine_learning_engineering_interview /app/machine_learning_engineering_interview
 
-RUN pip install --upgrade pip && pip install fastapi "uvicorn[standard]"
+COPY model/requirements.txt /app/requirements.txt
+RUN pip install --upgrade pip && pip install -r /app/requirements.txt
 
-# Now copy the rest of the source
-COPY . /app
+# Ensure uvicorn & fastapi exist (if not already in your deps)
+RUN pip install --upgrade pip && pip install "uvicorn[standard]" fastapi
 
-# Ensure /app is on sys.path
+# Make /app importable
 ENV PYTHONPATH=/app
 
-# Start FastAPI with Uvicorn — ADJUST module:object below
-# If your app object is `api` inside model.py in /app, use model:api
-CMD ["uvicorn", "machine_learning_engineering_interview.app:model", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "machine_learning_engineering_interview.model:app", "--host", "0.0.0.0", "--port", "8000"]
+
 
