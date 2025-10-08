@@ -30,6 +30,8 @@ COPY pyproject.toml requirements.txt* /app/
 RUN pip install --upgrade pip && \
     if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
+RUN pip install --upgrade pip && pip install fastapi "uvicorn[standard]"
+
 # Now copy the rest of the source
 COPY . /app
 
