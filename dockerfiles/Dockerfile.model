@@ -18,16 +18,25 @@
 
 # CMD ["/app/.venv/bin/fastapi", "run", "model.py", "--port", "80", "--host", "0.0.0.0"]
 
-# GH200-friendly CUDA+PyTorch base (multi-arch; has arm64 variant)
+
+# ARM64 + CUDA + PyTorch (multi-arch) — good for GH200
 FROM nvcr.io/nvidia/pytorch:24.08-py3
 
-# Your app setup
+# Put your code under /app
 WORKDIR /app
+
+# Install deps first for layer caching
 COPY pyproject.toml requirements.txt* /app/
 RUN pip install --upgrade pip && \
     if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+
+# Now copy the rest of the source
 COPY . /app
 
-# If you run uv, install it here (arm64 binary is fine) or just stick with pip.
-# Expose + entrypoint as needed
-CMD ["python", "-m", "your_model_package.server"]
+# Ensure /app is on sys.path
+ENV PYTHONPATH=/app
+
+# Start FastAPI with Uvicorn — ADJUST module:object below
+# If your app object is `api` inside model.py in /app, use model:api
+CMD ["uvicorn", "model:api", "--host", "0.0.0.0", "--port", "8000"]
+
