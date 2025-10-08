@@ -13,32 +13,22 @@ spec:
       labels:
         app: model-service
     spec:
-      # Optional: force ARM64 scheduling (good safety on mixed clusters)
-      nodeSelector:
-        kubernetes.io/arch: arm64
-
-      # If pulling from nvcr.io and you need a secret:
-      # imagePullSecrets:
-      #   - name: ngc-registry
-
       containers:
         - name: model-service
           image: {{ .Values.image_model.repository }}:{{ .Values.image_model.tag | default "latest" }}
           ports:
-            - containerPort: 8000
-
-          # Prefer letting the image CMD run. If you must override, use python not a host-built venv:
-          # command: ["python", "-m", "your_model_package.server"]
-
+            - containerPort: 80
+          command: ["/app/.venv/bin/fastapi", "run", "model.py", "--port", "8000", "--host", "0.0.0.0"]
           resources:
             requests:
               memory: "2Gi"
-              cpu: "2"
-              nvidia.com/gpu: "1"
+              nvidia.com/gpu: 1
+              cpu: 2
             limits:
               memory: "3Gi"
-              cpu: "3"
-              nvidia.com/gpu: "1"
+              cpu: 3
+              nvidia.com/gpu: 1
+
 ---
 apiVersion: v1
 kind: Service
