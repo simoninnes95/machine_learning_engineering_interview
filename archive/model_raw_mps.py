@@ -6,10 +6,8 @@ import requests
 import urllib.parse
 
 import torch
-import torch.nn as nn
 from torchvision import transforms
 from torchvision.models import vit_b_16, ViT_B_16_Weights
-from torch.ao.quantization import quantize_dynamic
 
 # Model class with initialization logic.
 class ImageModel:
@@ -53,20 +51,9 @@ class ImageModel:
 
 # Create FastAPI app and model instance.
 app = FastAPI()
-DEVICE = "cpu"
+DEVICE = "mps" if torch.backends.mps.is_available() and torch.backends.mps.is_built() else "cpu"
 model_instance = ImageModel()
 model_instance.to(DEVICE)
-
-# Quantize the actual nn.Module, not the wrapper
-quantized_core = quantize_dynamic(
-    model_instance.model,  # <-- the nn.Module
-    {nn.Linear},
-    dtype=torch.qint8,
-)
-
-# Put it back into your wrapper and keep it on CPU
-model_instance.model = quantized_core
-model_instance.to("cpu") 
 
 @app.get("/predict")
 async def predict(image_url: str) -> Dict:
