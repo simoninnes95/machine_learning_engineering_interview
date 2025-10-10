@@ -20,8 +20,8 @@ torch.backends.quantized.engine = "qnnpack"
 # -----------------------
 # Tuning knobs
 # -----------------------
-QUEUE_MAX = 32          # max requests per batch
-FLUSH_MS = 20           # flush interval (milliseconds)
+QUEUE_MAX = 20          # max requests per batch
+FLUSH_MS = 40           # flush interval (milliseconds)
 CACHE_SIZE = 512        # max cached outputs (LRU)
 HTTP_TIMEOUT = 5.0      # seconds per image fetch
 
