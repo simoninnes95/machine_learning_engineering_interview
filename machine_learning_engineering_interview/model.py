@@ -1,6 +1,7 @@
 import urllib.parse
 import asyncio
 import httpx
+import os
 
 from collections import OrderedDict
 from fastapi import FastAPI, HTTPException
@@ -15,6 +16,8 @@ from torch.ao.quantization import quantize_dynamic
 
 # Used for testing the quantized model on M2 ARM Macbook
 torch.backends.quantized.engine = "qnnpack"
+torch.set_num_threads(int(os.getenv("TORCH_NUM_THREADS", "2")))
+torch.set_num_interop_threads(1)
 
 
 # -----------------------

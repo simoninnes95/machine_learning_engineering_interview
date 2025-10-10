@@ -4,7 +4,7 @@ metadata:
   name: api-service
   namespace:  {{ .Release.Namespace }}
 spec:
-  replicas: 1
+  replicas: 2
   selector:
     matchLabels:
       app: api-service
@@ -21,10 +21,10 @@ spec:
           command: ["/app/.venv/bin/fastapi", "run", "api.py", "--port", "8000", "--host", "0.0.0.0"]
           resources:
             requests:
-              memory: "64Mi"
-              cpu: "100m"
-            limits:
               memory: "256Mi"
+              cpu: "250m"
+            limits:
+              memory: "512Mi"
               cpu: "500m"
 
 ---
