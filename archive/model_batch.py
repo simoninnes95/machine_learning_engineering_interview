@@ -8,9 +8,16 @@ from collections import OrderedDict
 
 import torch
 from torchvision import transforms
-from torchvision.models import vit_b_16
+
+from torchvision.models import vit_b_16, ViT_B_16_Weights
+from torch.ao.quantization import quantize_dynamic
 
 import httpx  # async requests
+
+import torch.nn as nn
+
+
+torch.backends.quantized.engine = "qnnpack"
 
 # -----------------------
 # Tuning knobs
@@ -20,7 +27,8 @@ FLUSH_MS = 40         # flush interval (milliseconds)
 CACHE_SIZE = 512      # max cached outputs (LRU)
 HTTP_TIMEOUT = 5.0    # seconds per image fetch
 
-DEVICE = "mps" if torch.backends.mps.is_available() and torch.backends.mps.is_built() else "cpu"
+# DEVICE = "mps" if torch.backends.mps.is_available() and torch.backends.mps.is_built() else "cpu"
+DEVICE = "cpu"  # quantized model must run on CPU
 
 # -----------------------
 # Simple LRU cache (by URL)
@@ -46,17 +54,62 @@ class LRUCache:
 # Model wrapper
 # -----------------------
 class ImageModel:
-    def __init__(self):
-        self.model = vit_b_16(pretrained=True).eval().to(DEVICE)
-        self.preprocessor = transforms.Compose([
-            transforms.Resize(224),
-            transforms.CenterCrop(224),
-            transforms.ToTensor(),
-            transforms.Lambda(lambda t: t[:3, ...]),  # remove alpha channel
-            transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                                 std=[0.229, 0.224, 0.225]),
-        ])
+    
+    def __init__(self, device: str | None = None, quantize: bool = False):
 
+        # Use the new weights API (replaces deprecated pretrained=True)
+        weights = ViT_B_16_Weights.DEFAULT
+        self.model = vit_b_16(weights=weights).eval()
+
+        # Use the exact transforms paired with these weights
+        self.preprocessor = weights.transforms()
+
+        # quantization must live on CPU
+        if quantize:
+            self.model = quantize_dynamic(self.model, {nn.Linear}, dtype=torch.qint8)
+            device = "cpu"
+
+        chosen = (
+            device if device is not None
+            else ("mps" if (torch.backends.mps.is_available() and torch.backends.mps.is_built())
+                  else "cuda" if torch.cuda.is_available()
+                  else "cpu")
+        )
+        self.device = torch.device(chosen)
+        self.model.to(self.device)
+
+    def to(self, device: str):
+        if any(p.is_quantized if hasattr(p, "is_quantized") else False for p in self.model.parameters(recurse=True)):
+            self.device = torch.device("cpu")
+        else:
+            self.device = torch.device(device)
+        self.model.to(self.device)
+        return self
+    
+    # @torch.inference_mode()
+    # def predict(self, image_url: str) -> Dict:
+    #     response = requests.get(image_url)
+    #     pil_image = Image.open(BytesIO(response.content))
+    #     print("[1/3] Downloaded and parsed image data: {}".format(pil_image))
+        
+    #     pil_images = [pil_image]  # Batch size of 1
+    #     input_tensor = torch.cat([self.preprocessor(i).unsqueeze(0) for i in pil_images])
+    #     print("[2/3] Images transformed, tensor shape {}".format(input_tensor.shape))
+        
+    #     # --- Timing start ---
+    #     start = time.perf_counter()
+    #     output_tensor = self.model(input_tensor)
+    #     end = time.perf_counter()
+    #     # --- Timing end ---
+
+    #     elapsed_ms = (end - start) * 1000
+
+    #     print("[3/3] Inference done in {}".format(round(elapsed_ms, 2)))
+    #     print("DEVICE: {}".format(DEVICE))
+    #     return {
+    #         "class_index": int(torch.argmax(output_tensor[0]))
+    #     }
+    
     def infer(self, batch_tensor: torch.Tensor) -> torch.Tensor:
         # batch_tensor: [B, 3, 224, 224] on DEVICE
         with torch.inference_mode():
@@ -75,7 +128,7 @@ class Batcher:
         self.model = model
         self.queue: asyncio.Queue[RequestItem] = asyncio.Queue()
         self.cache = LRUCache(CACHE_SIZE)
-        self.client = httpx.AsyncClient(timeout=HTTP_TIMEOUT)
+        self.client = httpx.AsyncClient(timeout=HTTP_TIMEOUT, follow_redirects=True)
         self._task = None
         self._flush_ms = FLUSH_MS
         self._queue_max = QUEUE_MAX
@@ -198,7 +251,7 @@ class Batcher:
 # FastAPI app
 # -----------------------
 app = FastAPI()
-model_instance = ImageModel()
+model_instance = ImageModel(device=DEVICE, quantize=False)
 batcher = Batcher(model_instance)
 
 @app.on_event("startup")
@@ -208,6 +261,10 @@ async def _startup():
 @app.on_event("shutdown")
 async def _shutdown():
     await batcher.shutdown()
+
+@app.get("/health")
+async def health():
+    return {"ok": True, "device": str(model_instance.device)}
 
 @app.get("/predict")
 async def predict(image_url: str) -> Dict:

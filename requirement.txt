@@ -1,0 +1,8 @@
+fastapi[standard]>=0.115.11
+locust>=2.33.0
+pillow>=11.1.0
+ray[serve]==2.41.0
+torch>=2.6.0
+torchvision>=0.21.0
+onnx 
+onnxruntime
