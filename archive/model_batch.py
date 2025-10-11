@@ -1,37 +1,38 @@
-import urllib.parse
-import asyncio
-import httpx
-import os
-
-from collections import OrderedDict
 from fastapi import FastAPI, HTTPException
-from typing import Dict, List
+from typing import Dict, List, Tuple
 from io import BytesIO
 from PIL import Image
+import urllib.parse
+import asyncio
+from collections import OrderedDict
 
 import torch
-import torch.nn as nn
+from torchvision import transforms
+
 from torchvision.models import vit_b_16, ViT_B_16_Weights
 from torch.ao.quantization import quantize_dynamic
 
-# Used for testing the quantized model on M2 ARM Macbook
-torch.backends.quantized.engine = "qnnpack"
-torch.set_num_threads(int(os.getenv("TORCH_NUM_THREADS", "2")))
-torch.set_num_interop_threads(1)
+import httpx  # async requests
 
+import torch.nn as nn
+
+
+torch.backends.quantized.engine = "qnnpack"
 
 # -----------------------
 # Tuning knobs
 # -----------------------
-QUEUE_MAX = 20          # max requests per batch
-FLUSH_MS = 40           # flush interval (milliseconds)
-CACHE_SIZE = 512        # max cached outputs (LRU)
-HTTP_TIMEOUT = 5.0      # seconds per image fetch
+QUEUE_MAX = 32        # max requests per batch
+FLUSH_MS = 40         # flush interval (milliseconds)
+CACHE_SIZE = 512      # max cached outputs (LRU)
+HTTP_TIMEOUT = 5.0    # seconds per image fetch
 
-DEVICE = "mps" if torch.backends.mps.is_available() and torch.backends.mps.is_built() else "cpu"
-# DEVICE = "cpu"  # quantized model must run on CPU
+# DEVICE = "mps" if torch.backends.mps.is_available() and torch.backends.mps.is_built() else "cpu"
+DEVICE = "cpu"  # quantized model must run on CPU
 
-
+# -----------------------
+# Simple LRU cache (by URL)
+# -----------------------
 class LRUCache:
     def __init__(self, capacity: int = 256):
         self.capacity = capacity
@@ -49,9 +50,13 @@ class LRUCache:
         if len(self._od) > self.capacity:
             self._od.popitem(last=False)
 
-
+# -----------------------
+# Model wrapper
+# -----------------------
 class ImageModel:
+    
     def __init__(self, device: str | None = None, quantize: bool = False):
+
         # Use the new weights API (replaces deprecated pretrained=True)
         weights = ViT_B_16_Weights.DEFAULT
         self.model = vit_b_16(weights=weights).eval()
@@ -59,49 +64,64 @@ class ImageModel:
         # Use the exact transforms paired with these weights
         self.preprocessor = weights.transforms()
 
-        # quantization must live on CPU for M2 ARM Macbook
+        # quantization must live on CPU
         if quantize:
             self.model = quantize_dynamic(self.model, {nn.Linear}, dtype=torch.qint8)
             device = "cpu"
 
         chosen = (
-            device
-            if device is not None
-            else (
-                "mps"
-                if (torch.backends.mps.is_available() and torch.backends.mps.is_built())
-                else "cuda"
-                if torch.cuda.is_available()
-                else "cpu"
-            )
+            device if device is not None
+            else ("mps" if (torch.backends.mps.is_available() and torch.backends.mps.is_built())
+                  else "cuda" if torch.cuda.is_available()
+                  else "cpu")
         )
         self.device = torch.device(chosen)
         self.model.to(self.device)
 
     def to(self, device: str):
-        if any(
-            p.is_quantized if hasattr(p, "is_quantized") else False
-            for p in self.model.parameters(recurse=True)
-        ):
+        if any(p.is_quantized if hasattr(p, "is_quantized") else False for p in self.model.parameters(recurse=True)):
             self.device = torch.device("cpu")
         else:
             self.device = torch.device(device)
         self.model.to(self.device)
         return self
+    
+    # @torch.inference_mode()
+    # def predict(self, image_url: str) -> Dict:
+    #     response = requests.get(image_url)
+    #     pil_image = Image.open(BytesIO(response.content))
+    #     print("[1/3] Downloaded and parsed image data: {}".format(pil_image))
+        
+    #     pil_images = [pil_image]  # Batch size of 1
+    #     input_tensor = torch.cat([self.preprocessor(i).unsqueeze(0) for i in pil_images])
+    #     print("[2/3] Images transformed, tensor shape {}".format(input_tensor.shape))
+        
+    #     # --- Timing start ---
+    #     start = time.perf_counter()
+    #     output_tensor = self.model(input_tensor)
+    #     end = time.perf_counter()
+    #     # --- Timing end ---
 
+    #     elapsed_ms = (end - start) * 1000
 
+    #     print("[3/3] Inference done in {}".format(round(elapsed_ms, 2)))
+    #     print("DEVICE: {}".format(DEVICE))
+    #     return {
+    #         "class_index": int(torch.argmax(output_tensor[0]))
+    #     }
+    
     def infer(self, batch_tensor: torch.Tensor) -> torch.Tensor:
         # batch_tensor: [B, 3, 224, 224] on DEVICE
         with torch.inference_mode():
             return self.model(batch_tensor)
 
-
-
+# -----------------------
+# Batching infrastructure
+# -----------------------
 class RequestItem:
     def __init__(self, image_url: str):
         self.image_url = image_url
         self.future: asyncio.Future = asyncio.get_event_loop().create_future()
-
 
 class Batcher:
     def __init__(self, model: ImageModel):
@@ -151,26 +171,18 @@ class Batcher:
                         timeout = max(0, end_time - asyncio.get_event_loop().time())
                         if timeout == 0:
                             break
-                        next_item = await asyncio.wait_for(
-                            self.queue.get(), timeout=timeout
-                        )
+                        next_item = await asyncio.wait_for(self.queue.get(), timeout=timeout)
                         batch.append(next_item)
                 except asyncio.TimeoutError:
                     pass  # time to flush
 
                 # split into cache hits and misses so we only fetch/infer for misses
-                misses = [
-                    (i, it)
-                    for i, it in enumerate(batch)
-                    if self.cache.get(it.image_url) is None
-                ]
+                misses = [(i, it) for i, it in enumerate(batch) if self.cache.get(it.image_url) is None]
 
                 # if there are misses, fetch + preprocess + infer
                 if misses:
                     urls = [it.image_url for _, it in misses]
-                    pil_images = await self._fetch_images(
-                        urls
-                    )  # may include None for failures
+                    pil_images = await self._fetch_images(urls)  # may include None for failures
                     tensors = []
                     valid_idx: List[int] = []
 
@@ -178,31 +190,19 @@ class Batcher:
                         if pil is None:
                             # fail this request
                             if not it.future.done():
-                                it.future.set_exception(
-                                    HTTPException(
-                                        status_code=400, detail="Failed to fetch image"
-                                    )
-                                )
+                                it.future.set_exception(HTTPException(status_code=400, detail="Failed to fetch image"))
                             continue
                         try:
-                            t = self.model.preprocessor(pil).unsqueeze(
-                                0
-                            )  # [1,3,224,224]
+                            t = self.model.preprocessor(pil).unsqueeze(0)  # [1,3,224,224]
                             tensors.append(t)
                             valid_idx.append(miss_idx)
                         except Exception:
                             if not it.future.done():
-                                it.future.set_exception(
-                                    HTTPException(
-                                        status_code=400, detail="Preprocessing failed"
-                                    )
-                                )
+                                it.future.set_exception(HTTPException(status_code=400, detail="Preprocessing failed"))
 
                     if tensors:
-                        batch_tensor = torch.cat(tensors, dim=0).to(
-                            DEVICE
-                        )  # [B,3,224,224]
-                        logits = self.model.infer(batch_tensor)  # [B,num_classes]
+                        batch_tensor = torch.cat(tensors, dim=0).to(DEVICE)  # [B,3,224,224]
+                        logits = self.model.infer(batch_tensor)             # [B,num_classes]
                         preds = torch.argmax(logits, dim=1).tolist()
 
                         # write results for valid misses into cache
@@ -219,11 +219,7 @@ class Batcher:
                     result = self.cache.get(it.image_url)
                     if result is None:
                         # if still missing, treat as failure
-                        it.future.set_exception(
-                            HTTPException(
-                                status_code=500, detail="Unknown inference error"
-                            )
-                        )
+                        it.future.set_exception(HTTPException(status_code=500, detail="Unknown inference error"))
                     else:
                         it.future.set_result(result)
 
@@ -233,9 +229,7 @@ class Batcher:
                 try:
                     it = self.queue.get_nowait()
                     if not it.future.done():
-                        it.future.set_exception(
-                            HTTPException(status_code=500, detail=str(e))
-                        )
+                        it.future.set_exception(HTTPException(status_code=500, detail=str(e)))
                 except asyncio.QueueEmpty:
                     await asyncio.sleep(0.001)
 
@@ -253,27 +247,24 @@ class Batcher:
         tasks = [fetch_one(u) for u in urls]
         return await asyncio.gather(*tasks, return_exceptions=False)
 
-
-
+# -----------------------
+# FastAPI app
+# -----------------------
 app = FastAPI()
 model_instance = ImageModel(device=DEVICE, quantize=False)
 batcher = Batcher(model_instance)
-
 
 @app.on_event("startup")
 async def _startup():
     await batcher.start()
 
-
 @app.on_event("shutdown")
 async def _shutdown():
     await batcher.shutdown()
 
-
-@app.get("/device-check")
+@app.get("/health")
 async def health():
     return {"ok": True, "device": str(model_instance.device)}
-
 
 @app.get("/predict")
 async def predict(image_url: str) -> Dict:
@@ -283,9 +274,7 @@ async def predict(image_url: str) -> Dict:
     """
     return await batcher.enqueue(image_url)
 
-
 if __name__ == "__main__":
     import uvicorn
-
     # Note: use multiple workers/processes only if you also isolate model per-worker
     uvicorn.run(app, host="0.0.0.0", port=8001)
