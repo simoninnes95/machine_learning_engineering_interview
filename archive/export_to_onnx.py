@@ -7,10 +7,7 @@ def main():
     weights = ViT_B_16_Weights.DEFAULT
     model = vit_b_16(weights=weights).eval()
 
-    # ViT_B_16 expects 3x224x224, normalized per weights.transforms()
-    dummy = torch.randn(1, 3, 224, 224)  # batch=1
-
-    # Good default opset for ViT (>=17 is fine); keep dynamic batch dim
+    dummy = torch.randn(1, 3, 224, 224)  
     torch.onnx.export(
         model,
         dummy,
@@ -38,9 +35,6 @@ def main():
     y_ort = torch.tensor(y_ort).softmax(dim=1).numpy()
 
     print("max abs diff:", float(np.max(np.abs(y_pt - y_ort))))
-
-
-
 
 if __name__ == "__main__":
     main()

@@ -27,7 +27,6 @@ CACHE_SIZE = 512        # max cached outputs (LRU)
 HTTP_TIMEOUT = 5.0      # seconds per image fetch
 
 DEVICE = "mps" if torch.backends.mps.is_available() and torch.backends.mps.is_built() else "cpu"
-# DEVICE = "cpu"  # quantized model must run on CPU
 
 
 class LRUCache:
@@ -55,7 +54,7 @@ class ONNXImageModel:
         available = ort.get_available_providers()
         wanted = ["CoreMLExecutionProvider", "CPUExecutionProvider"] if prefer_coreml else ["CPUExecutionProvider"]
         self.providers = [p for p in wanted if p in available]
-        if not self.providers:  # hard fallback
+        if not self.providers:
             self.providers = ["CPUExecutionProvider"]
 
         so = ort.SessionOptions()
@@ -64,7 +63,6 @@ class ONNXImageModel:
         self.session = ort.InferenceSession(onnx_path, sess_options=so, providers=self.providers)
         self.input_name = self.session.get_inputs()[0].name
 
-        # for /device-check compatibility
         self.device = f"onnxruntime[{','.join(self.providers)}]"
 
 
@@ -295,7 +293,6 @@ class Batcher:
 
 
 app = FastAPI()
-# model_instance = ImageModel(device=DEVICE, quantize=False)
 model_instance = ONNXImageModel("vit_b16.onnx", prefer_coreml=True)
 
 batcher = Batcher(model_instance)
@@ -327,6 +324,4 @@ async def predict(image_url: str) -> Dict:
 
 if __name__ == "__main__":
     import uvicorn
-
-    # Note: use multiple workers/processes only if you also isolate model per-worker
     uvicorn.run(app, host="0.0.0.0", port=8001)
