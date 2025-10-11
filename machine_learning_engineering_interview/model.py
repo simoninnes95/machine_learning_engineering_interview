@@ -250,19 +250,19 @@ class Batcher:
                 except asyncio.TimeoutError:
                     pass
 
-                misses = [
+                costly_processes = [
                     (i, it)
                     for i, it in enumerate(batch)
                     if self.cache.get(it.image_url) is None
                 ]
 
-                if misses:
-                    urls = [it.image_url for _, it in misses]
+                if costly_processes:
+                    urls = [it.image_url for _, it in costly_processes]
                     pil_images = await self._fetch_images(urls)
                     tensors = []
                     valid_idx: List[int] = []
 
-                    for (miss_idx, it), pil in zip(misses, pil_images):
+                    for (costly_idx, it), pil in zip(costly_processes, pil_images):
                         if pil is None:
                             if not it.future.done():
                                 it.future.set_exception(
@@ -274,7 +274,7 @@ class Batcher:
                         try:
                             t = self.model.preprocessor(pil).unsqueeze(0)
                             tensors.append(t)
-                            valid_idx.append(miss_idx)
+                            valid_idx.append(costly_idx)
                         except Exception:
                             if not it.future.done():
                                 it.future.set_exception(
@@ -385,5 +385,4 @@ async def predict(image_url: str) -> Dict:
 
 if __name__ == "__main__":
     import uvicorn
-
     uvicorn.run(app, host="0.0.0.0", port=8001)
