@@ -1,3 +1,4 @@
+# This file is mostly a copy of model.py but using ONNX Runtime instead of PyTorch
 import urllib.parse
 import asyncio
 import httpx
@@ -84,7 +85,6 @@ class ONNXImageModel:
         return None, []
 
     def infer(self, batch_tensor: torch.Tensor):
-        # ORT wants numpy on CPU
         logits = self.session.run(None, {self.input_name: batch_tensor.numpy()})[0]  # [B,num_classes]
         return torch.from_numpy(logits)
 
@@ -130,7 +130,7 @@ class ImageModel:
 
 
     def infer(self, batch_tensor: torch.Tensor) -> torch.Tensor:
-        # batch_tensor: [B, 3, 224, 224] on DEVICE
+        # batch_tensor: [B, 3, 224, 224]
         with torch.inference_mode():
             return self.model(batch_tensor)
 
@@ -165,14 +165,13 @@ class Batcher:
         await self.client.aclose()
 
     async def enqueue(self, image_url: str) -> Dict:
-        # Cache hit? Return immediately
         cached = self.cache.get(image_url)
         if cached is not None:
             return cached
 
         item = RequestItem(image_url)
         await self.queue.put(item)
-        return await item.future  # wait for batch result
+        return await item.future  
 
     async def _run(self):
         # background loop that flushes every FLUSH_MS or when QUEUE_MAX reached
@@ -294,7 +293,6 @@ class Batcher:
 
 app = FastAPI()
 model_instance = ONNXImageModel("vit_b16.onnx", prefer_coreml=True)
-
 batcher = Batcher(model_instance)
 
 
