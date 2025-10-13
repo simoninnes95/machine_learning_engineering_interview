@@ -3,7 +3,7 @@ kind: Config
 metadata:
   name: machine_learning_engineering_interview
 build:
-  platforms: ["linux/amd64"]
+  platforms: ["linux/arm64"]
   local:
     push: false
     useDockerCLI: true

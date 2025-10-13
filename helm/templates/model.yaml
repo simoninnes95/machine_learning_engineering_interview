@@ -4,7 +4,7 @@ metadata:
   name: model-service
   namespace:  {{ .Release.Namespace }}
 spec:
-  replicas: 1
+  replicas: 3
   selector:
     matchLabels:
       app: model-service
@@ -21,13 +21,13 @@ spec:
           command: ["/app/.venv/bin/fastapi", "run", "model.py", "--port", "8000", "--host", "0.0.0.0"]
           resources:
             requests:
-              memory: "2Gi"
-              nvidia.com/gpu: 1
+              memory: "3Gi"
+              nvidia.com/gpu: 0
               cpu: 2
             limits:
-              memory: "3Gi"
+              memory: "4Gi"
               cpu: 3
-              nvidia.com/gpu: 1
+              nvidia.com/gpu: 0
 
 ---
 apiVersion: v1
